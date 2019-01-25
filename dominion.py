@@ -34,7 +34,7 @@ class Player:
         self.player_deck = PlayerDeck()
 
     def __str__(self):
-        string = "\n%s" % (self.name)
+        string = "%s" % (self.name)
         string += "\n\tHand:    "
         for card in self.player_deck.hand_list:
             string += "%s  " % (card.name)
@@ -44,7 +44,7 @@ class Player:
         string += "\n\tDiscard: "
         for card in self.player_deck.discard_list:
             string += "%s  " % (card.name)
-        return string + "\n"
+        return string
 
 
 class Card:
