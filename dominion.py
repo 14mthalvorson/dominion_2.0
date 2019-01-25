@@ -20,7 +20,7 @@ class Game:
     def __str__(self):
         string = "\n"
         for player in self.player_list:
-            string += "%s:\t Deck Size: %d\n" % (player.name, len(player.player_deck.draw_list) + len(player.player_deck.discard_list))
+            string += "%s:\t Deck Size: %d\n" % (player.name, len(player.player_deck.draw_list) + len(player.player_deck.discard_list) + len(player.player_deck.hand_list))
         return string + "\n"
 
     def take_next_player_turn(self):
