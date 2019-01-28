@@ -1,13 +1,8 @@
 from dominion import *
 
-g1 = Game(['AAA', 'BBB', 'CCC', 'DDD'])
+s1 = Simulator(['AAA', 'BBB', 'CCC', 'DDD'])
 
-for player in g1.player_list:
-    print(player)
-print(g1)
+s1.run_n_games(10)
 
-g1.take_n_turns(120)
+print(s1.buy_matrix)
 
-for player in g1.player_list:
-    print(player)
-print(g1)
