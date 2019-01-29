@@ -2,28 +2,42 @@ import random
 
 
 class Simulator:
-    def __init__(self, player_names):
+    def __init__(self, player_names, default_supply_size=30):
         self.buy_matrix = None
         self.player_names = player_names
         self.total_games = 0
+        self.default_supply_size = default_supply_size
 
     def run_n_games(self, n):
         for i in range(n):
-            g1 = Game(self.player_names, self.buy_matrix)
+            g1 = Game(self.player_names, self.buy_matrix, default_supply_size=self.default_supply_size)
             g1.run()
             self.total_games += 1
 
+            g1.winner.buy_matrix.normalize_matrix()
+
+            if n % 21 == 0:
+                g1.winner.buy_matrix.normalize_with_avg()
+
             self.buy_matrix = g1.winner.buy_matrix
+
+    def __str__(self):
+        string = ""
+        string += "Games: %d   " % self.total_games
+        string += "Supply size: %d\n" % self.default_supply_size
+        return string
 
 
 class Game:
-    def __init__(self, player_names, buy_matrix=None):
+    def __init__(self, player_names, buy_matrix=None, default_supply_size=30):
         self.player_list = None
         self.first_player = None
         self.current_player = None
         self.winner = None
         self.buy_matrix = buy_matrix
         self.round = -1
+        self.list_of_card_names = None
+        self.default_supply_size = default_supply_size
 
         self.init_player_list(player_names)
         self.init_supply()
@@ -50,24 +64,24 @@ class Game:
 
     def init_supply(self):
         self.supply = {
-            'copper': 30,
-            'silver': 30,
-            'gold': 30,
-            'estate': 30,
-            'duchy': 30,
-            'province': 30
+            'copper': self.default_supply_size,
+            'silver': self.default_supply_size,
+            'gold': self.default_supply_size,
+            'estate': self.default_supply_size,
+            'duchy': self.default_supply_size,
+            'province': self.default_supply_size
         }
 
     def init_player_matrices(self):
-        list_of_card_names = list(self.supply.keys())
+        self.list_of_card_names = list(self.supply.keys())
         # list_of_card_names.sort()
 
         # Player buy matrix
         for player in self.player_list:
-            if self.buy_matrix is None:
-                player.init_player_matrix(list_of_card_names)
-            else:
-                player.buy_matrix = ProbabilityMatrix.clone_matrix(self.buy_matrix)
+            if self.buy_matrix is None: # First game
+                player.init_player_matrix(self.list_of_card_names)
+            else: # Not the first game
+                player.copy_player_matrix(self.list_of_card_names, self.buy_matrix)
 
     def buy_card(self, treasure_total):
         valid_buys = list(self.supply.keys())
@@ -79,7 +93,27 @@ class Game:
         valid_buys = [card_name for card_name in valid_buys if treasure_total >= self.card_stats.get(card_name, -1)[1]]
 
         if len(valid_buys) > 0:
-            selected_card_name = random.choice(valid_buys)
+            # Random selection
+            #selected_card_name = random.choice(valid_buys)
+
+            valid_buys_sum_probs = 0
+            for card_name in valid_buys:
+                valid_buys_sum_probs += self.current_player.buy_matrix.matrix[self.round][self.list_of_card_names.index(card_name)]
+
+            valid_buys_normalized_probs = []
+            for card_name in valid_buys:
+                valid_buys_normalized_probs.append(self.current_player.buy_matrix.matrix[self.round][self.list_of_card_names.index(card_name)] / valid_buys_sum_probs)
+
+            selected_card_name = None
+            prob_total = 0
+            for i in range(len(valid_buys)):
+                random_num = random.random()
+                if random_num < valid_buys_normalized_probs[i] / (1 - prob_total):
+                    selected_card_name = valid_buys[i]
+                else:
+                    prob_total += valid_buys_normalized_probs[i]
+
+
             type = self.card_stats[selected_card_name][0]
             cost = self.card_stats[selected_card_name][1]
             treasure = self.card_stats[selected_card_name][2]
@@ -99,7 +133,7 @@ class Game:
 
         # Update round when at first_player's turn
         if self.current_player == self.first_player:
-            self.round += 1
+            self.round = min(self.round + 1, 25)
 
         # Buy phase
         treasure_total = 0
@@ -120,7 +154,7 @@ class Game:
             # Check if game is over
             if self.is_game_over():
                 self.determine_winner()
-                print("Winner: %s" % self.winner.name)
+                #print("Winner: %s" % self.winner.name)
                 break
 
     def run(self):
@@ -128,7 +162,7 @@ class Game:
             self.take_next_player_turn()
 
         self.determine_winner()
-        print("Winner: %s" % self.winner.name)
+        #print("Winner: %s" % self.winner.name)
 
     def is_game_over(self):
         if list(self.supply.values()).count(0) >= 3:
@@ -164,6 +198,13 @@ class Player:
 
     def init_player_matrix(self, list_of_card_names):
         self.buy_matrix = ProbabilityMatrix(list_of_card_names)
+
+    def copy_player_matrix(self, list_of_card_names, other_matrix):
+        self.buy_matrix = ProbabilityMatrix(list_of_card_names)
+
+        for round_index in range(len(self.buy_matrix.matrix)):
+            for card_index in range(len(self.buy_matrix.matrix[round_index])):
+                self.buy_matrix.matrix[round_index][card_index] = other_matrix.matrix[round_index][card_index]
 
     def __str__(self):
         string = "%s" % (self.name)
@@ -230,25 +271,29 @@ class PlayerDeck:
         return victory_points
 
 class ProbabilityMatrix:
-    def __init__(self, list_of_card_names, max_rounds=50):
+    def __init__(self, list_of_card_names, max_rounds=26):
         self.max_rounds = max_rounds
         self.list_of_card_names = list_of_card_names
         self.matrix = [[1.0 for i in range(len(list_of_card_names))] for j in range(max_rounds)]
         self.normalize_matrix()
 
     def update_prob(self, round, card_name):
+        alpha = 0.01
         index = self.list_of_card_names.index(card_name)
-        self.matrix[round][index] += 0.05 * (1 - self.matrix[round][index])
+
+        # Update probability function
+        self.matrix[round][index] += 0.01
+        #self.matrix[round][index] += alpha * (1 - self.matrix[round][index])
 
     def normalize_matrix(self):
         for round in range(len(self.matrix)):
             prob_total = sum(self.matrix[round])
             self.matrix[round] = [x / prob_total for x in self.matrix[round]]
 
-    def clone_matrix(self, other_matrix):
-        for round_index in range(len(self.matrix)):
-            for card_index in range(len(self.matrix[round_index])):
-                self.matrix[round_index][card_index] = other_matrix[round_index][card_index]
+    def normalize_with_avg(self):
+        for round in range(len(self.matrix)):
+            self.matrix[round] = [x + 0.1 for x in self.matrix[round]]
+        self.normalize_matrix()
 
     def __str__(self):
         string = ""
@@ -257,7 +302,7 @@ class ProbabilityMatrix:
         string += "\n"
         for round_probs in self.matrix:
             for prob in round_probs:
-                string += "%.1f\t " % (prob * 100)
+                string += "%.1f \t " % (prob * 100)
             string += "\n"
         return string
 
